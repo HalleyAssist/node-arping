@@ -2,36 +2,23 @@ const NS_PER_SEC = Math.pow(10, 9);
 
 const os         = require("os");
 const raw        = require("raw-socket");
-const pcap       = require("pcap2");
 const types      = require("./types");
 
-exports.ping = (...args) => {
-	var ip_address = "00:00:00:00:00:00";
-	var options    = {};
-	var next       = noop;
-
-	args.map((arg) => {
-		switch (typeof arg) {
-			case "string":
-				ip_address = arg;
-				break;
-			case "object":
-				options = arg;
-				break;
-			case "function":
-				next = arg;
-				break;
-		}
-	});
-
-	options.tpa = ip_address;
-
+exports.ping = (options, next = noop) => {
 	let packet = exports.build(options);
 
-	try_ping(ip_address, packet, {
-		tries    : options.tries    ||    3,
-		interval : options.interval || 1000,
-	}, next);
+	var socket = raw.createSocket ({protocol: raw.Protocol.None, addressFamily: raw.AddressFamily.Raw});
+	socket.on ("error", function (error) {
+		console.log (error.toString ());
+		socket.close ();
+	});
+
+	socket.send (packet, 0, packet.length, options.dev, function (error, bytes) {
+		if (error)
+			console.log (error.toString ());
+
+		console.log("sent")
+	});
 };
 
 /**
@@ -47,6 +34,7 @@ exports.ping = (...args) => {
  * - spa: source protocol address       (default = runtime lookup)
  * - tpa: target protocol address       (default = none)
  * - operation: request or response     (default = request)
+ * - dev: ethernet device to use        (default = first valid)
  *
  * @param   options                     Object with packet properties
  **/
@@ -81,6 +69,7 @@ exports.build = (options) => {
 		let ifaces = os.networkInterfaces();
 
 		for (let dev in ifaces) {
+			if(options.dev && dev != options.dev) continue
 			for (let i = 0; i < ifaces[dev].length; i++) {
 				if (ifaces[dev][i].family != options.ptype.family) continue;
 
@@ -130,58 +119,5 @@ exports.build = (options) => {
 
 	return buffer;
 };
-
-function try_ping(ip_address, packet, options, next) {
-	var has_done = false;
-	var done     = (err, info) => {
-		if (has_done) return;
-
-		has_done = true;
-
-		if (err) {
-			options.tries -= 1;
-
-			if (options.tries <= 0) return next(err);
-
-			return try_ping(ip_address, packet, options, next);
-		}
-
-		return next(null, info);
-	};
-
-	let session = new pcap.Session("", { filter : "arp" });
-	let time    = process.hrtime();
-
-	session.on("packet", (raw) => {
-		var packet = pcap.decode.packet(raw);
-
-		if (packet.payload.payload.sender_pa.toString() != ip_address) return;
-
-		time = process.hrtime(time);
-
-		return done(null, {
-			elapsed : time[0] + time[1] / NS_PER_SEC,
-			tha     : packet.payload.payload.target_ha.toString(),
-			sha     : packet.payload.payload.sender_ha.toString(),
-			tip     : packet.payload.payload.target_pa.toString(),
-			sip     : packet.payload.payload.sender_pa.toString(),
-		});
-	});
-
-	session.on("end", function(session) {
-		session.close();
-		session = null;
-	});
-
-	session.inject(packet);
-
-	setTimeout(() => {
-		if (!session) return;
-
-		session.close();
-
-		done(new Error("Timeout"));
-	}, options.interval);
-}
 
 function noop() {}
