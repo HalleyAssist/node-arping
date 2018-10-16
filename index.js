@@ -8,16 +8,15 @@ exports.ping = (options, next = noop) => {
 	let packet = exports.build(options);
 
 	var socket = raw.createSocket ({protocol: raw.Protocol.None, addressFamily: raw.AddressFamily.Raw});
+
 	socket.on ("error", function (error) {
-		console.log (error.toString ());
+		next(error)
 		socket.close ();
 	});
 
 	socket.send (packet, 0, packet.length, options.dev, function (error, bytes) {
-		if (error)
-			console.log (error.toString ());
-
-		console.log("sent")
+		next(error)
+		socket.close ();
 	});
 };
 
