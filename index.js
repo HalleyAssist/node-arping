@@ -20,6 +20,37 @@ exports.ping = (options, next = noop) => {
 	});
 };
 
+exports.find_iface = function(options){
+	if (typeof options.htype == "undefined")  options.htype = types.Ethernet;
+	if (typeof options.ptype == "undefined")  options.ptype = types.IPv4;
+
+	let ifaces = os.networkInterfaces();
+
+	let iface = null
+	
+	for (let dev in ifaces) {
+		if(options.dev && dev != options.dev) continue
+		for (let i = 0; i < ifaces[dev].length; i++) {
+			if (ifaces[dev][i].family != options.ptype.family) continue;
+
+			if (typeof options.sha == "undefined" && typeof options.spa == "undefined") {
+				if (ifaces[dev][i].internal) continue;
+			} else if (typeof options.sha == "undefined") {
+				if (ifaces[dev][i][options.ptype.interface_key] != options.spa) continue;
+			} else if (typeof options.spa == "undefined") {
+				if (ifaces[dev][i][options.htype.interface_key] != options.sha) continue;
+			}
+
+			iface = ifaces[dev][i];
+			break;
+		}
+
+		if (iface !== null) break;
+	}
+
+	return iface
+}
+
 /**
  * Build an ARP packet. You can change properties from the packet
  * but you have to at least provide the target address
@@ -43,7 +74,6 @@ exports.build = (options) => {
 
 	let offset = 14;
 	let buffer = Buffer.alloc(offset + 8 + (options.htype.length * 2) + (options.ptype.length * 2));
-	let iface  = null;
 
 	buffer[0] = 0xFF;
 	buffer[1] = 0xFF;
@@ -65,27 +95,7 @@ exports.build = (options) => {
 	offset += 8;
 
 	if (typeof options.sha == "undefined" || typeof options.spa == "undefined") {
-		let ifaces = os.networkInterfaces();
-
-		for (let dev in ifaces) {
-			if(options.dev && dev != options.dev) continue
-			for (let i = 0; i < ifaces[dev].length; i++) {
-				if (ifaces[dev][i].family != options.ptype.family) continue;
-
-				if (typeof options.sha == "undefined" && typeof options.spa == "undefined") {
-					if (ifaces[dev][i].internal) continue;
-				} else if (typeof options.sha == "undefined") {
-					if (ifaces[dev][i][options.ptype.interface_key] != options.spa) continue;
-				} else if (typeof options.spa == "undefined") {
-					if (ifaces[dev][i][options.htype.interface_key] != options.sha) continue;
-				}
-
-				iface = ifaces[dev][i];
-				break;
-			}
-
-			if (iface !== null) break;
-		}
+		let iface = exports.find_iface(options)
 
 		if (iface === null) throw new Error("Cannot find a suitable interface");
 
