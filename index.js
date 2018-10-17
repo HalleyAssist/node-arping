@@ -46,6 +46,7 @@ exports.ping = (...args) => {
  * - ptype: protocol type               (default = IPv4)
  * - spa: source protocol address       (default = runtime lookup)
  * - tpa: target protocol address       (default = none)
+ * - operation: request or response     (default = request)
  *
  * @param   options                     Object with packet properties
  **/
@@ -71,7 +72,8 @@ exports.build = (options) => {
 	buffer.writeUInt8   (options.htype.length, offset + 4);
 	buffer.writeUInt8   (options.ptype.length, offset + 5);
 
-	buffer.writeUInt16BE(0x0001,               offset + 6); // Request
+	let operation = options.operation === undefined ? 0x0001 : options.operation
+	buffer.writeUInt16BE(operation,            offset + 6); // Request
 
 	offset += 8;
 
